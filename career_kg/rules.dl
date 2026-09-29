@@ -1,0 +1,18 @@
+% Reasoning rules over the career knowledge graph (Datalog with recursion, existential heads, builtins).
+% Variables start with an uppercase letter; a head variable that does not occur in the body is existential
+% and is materialised as a fresh labelled object (a Skolem term).
+
+% --- 1. recursion: transitive closure of the UNSPSC taxonomy ------------------------------------------
+sub_t(X, Z) :- subclass_of(X, Z).
+sub_t(X, Z) :- sub_t(X, Y), subclass_of(Y, Z).
+
+% every skill belongs to its commodity and to all ancestors of it
+in_cat(S, C) :- is_a(S, C).
+in_cat(S, C) :- is_a(S, C0), sub_t(C0, C).
+
+% --- 2. object creation: one competency-area object per (occupation, class) it draws skills from -----
+has_area(O, K), area_cat(K, C) :- requires(O, S), in_cat(S, C), level(C, class).
+
+% --- 3. recursion + arithmetic: career moves of at most 2 hops that never go to a lower job zone ------
+move(A, B, 1) :- related(A, B), zone(A, ZA), zone(B, ZB), ge(ZB, ZA).
+move(A, C, N) :- move(A, B, M), related(B, C), zone(A, ZA), zone(C, ZC), ge(ZC, ZA), add(M, 1, N), le(N, 2), ne(A, C).
