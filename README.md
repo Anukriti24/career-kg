@@ -95,8 +95,5 @@ app.py                    Streamlit UI                    tests/                
 - The Datalog engine is deliberately small (no negation or aggregation); ComplEx is trained on the static graph only (no temporal model).
 - English / US occupation taxonomy (O\*NET-SOC); data licensed CC BY 4.0 by the U.S. Department of Labor.
 
-## Deploying the Streamlit app (Streamlit Community Cloud)
-The repository contains code only. No database files, downloads (`data/`), virtualenv or credentials are committed
-(see `.gitignore`). The graph lives in the hosted Neo4j and is loaded once with `make ingest` from a dev machine.
-`requirements.txt` holds the light runtime deps (streamlit, neo4j); `requirements-dev.txt` adds numpy, torch and pytest
-for ingest / evaluation / tests. In the app's *Settings -> Secrets* paste the values from `.streamlit/secrets.toml.example`.
+## Streamlit app (Streamlit Community Cloud)
+https://career-kg-ftcvszay9xz8lbk7cm7dfv.streamlit.app/
