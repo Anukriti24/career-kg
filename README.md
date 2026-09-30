@@ -9,9 +9,10 @@ make setup      # venv + dependencies
 cp .env.example .env   # fill in your hosted Neo4j (e.g. Aura free tier) URI + password
 make ingest     # download O*NET, learn skill embeddings, load the graph (~1 min)
 make app        # Streamlit UI -> http://localhost:8501
-make test       # 24 tests (integration tests skip if Neo4j is unreachable)
+make test       # 26 tests (integration tests skip if Neo4j is unreachable)
 make eval       # held-out evaluation (trains ComplEx once, ~10 min)
 .venv/bin/python -m career_kg kge   # after ingest: train ComplEx, save weights, store predictions
+.venv/bin/python -m career_kg gnn   # train a small R-GCN and compare its link prediction with the baselines
 ```
 CLI: `.venv/bin/python -m career_kg recommend "Python, TensorFlow, SQL" -k 5 [--no-inference] [--zones 3-5]`.
 Neo4j is hosted, nothing runs locally. Credentials come from `.env` (git-ignored) or the `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` environment variables.
@@ -53,6 +54,13 @@ ComplEx (PyTorch, CPU, dim 200, ~2.5 min) on occupations, skills and categories 
 `(Occupation)-[:PREDICTED_REQUIRES {p}]->(Skill)`: technologies the model expects but O*NET does not list (KG completion).
 Reload with `kge.load(path)`.
 
+## Graph neural network (`career_kg/gnn.py`)
+A two-layer R-GCN (PyTorch, dim 64) recomputes every node from its typed neighbours (requires, uses, is_a, subclass_of,
+related_to, plus inverse relations) and scores occupation->skill links with a DistMult decoder. Each epoch half of the
+occupation->skill edges carry messages and the other half are the prediction targets, so the network cannot read the answer
+off its own neighbours. `python -m career_kg gnn` trains it on the same held-out split as ComplEx (about 4 minutes on CPU).
+It is a small experiment: it is not tuned and is not used by the recommender.
+
 ## Evaluation (`make eval`, ~10 min, 300 held-out occupations)
 All learned components are re-trained *without* the test occupations. A simulated job seeker knows a random half of an occupation's core
 technologies; where does the true occupation rank? Second scenario: half the skills are swapped for an equivalent tool of the same category.
@@ -72,12 +80,14 @@ Link prediction (held-out occupation->skill edges, filtered ranking among all sk
 | ComplEx | 31% | 72% | 0.45 |
 | popularity | 27% | 52% | 0.36 |
 | skills of related occupations | 37% | 76% | 0.50 |
+| R-GCN (dim 64, 40 epochs, untuned, single run) | 17% | 48% | 0.28 |
 
-Honest reading:
+Analysis:
 - Category credit helps only when users name *equivalent* tools (+6 points hit@10); otherwise neutral.
 - Rule-derived class-level credit **hurts**, so it is used for structure and explanation (areas, moves), not for scoring.
 - Neither SVD nor ComplEx similarity beats plain category credit, so they are not used for ranking.
 - ComplEx clearly beats popularity at predicting missing requirements but not the simple "ask the related occupations" baseline.
+- A small untuned R-GCN scores below the popularity baseline on link prediction. The related-occupations baseline is already a one-hop neighbourhood aggregation, which is close to what a GNN layer computes, so no gain was found here; a tuned GNN was not tried.
 - The swap scenario is derived from the same taxonomy the KG uses, and hyper-parameters were tuned on this split (seed 0): treat numbers as optimistic.
 
 ## Layout
@@ -86,14 +96,17 @@ career_kg/dataset.py      download + parse O*NET          career_kg/scoring.py  
 career_kg/similarity.py   SVD skill embeddings            career_kg/recommender.py Cypher reasoning + explanations
 career_kg/datalog.py + rules.dl  rule engine + rules      career_kg/kge.py         ComplEx training, link prediction, save/load
 career_kg/graph_store.py  Neo4j schema + bulk load        career_kg/evaluate.py    held-out evaluation
+career_kg/gnn.py          R-GCN link prediction           career_kg/reasoning.py   runs rules.dl over the dataset
 app.py                    Streamlit UI                    tests/                   unit + Neo4j integration tests
 ```
 
 ## Limitations
 - Technology-centric: O*NET lists tools per occupation, not proficiency; general skills are only used if you enter them.
 - Occupations with short tool lists can outrank obvious matches for very small profiles (1-3 skills); add more skills.
-- The Datalog engine is deliberately small (no negation or aggregation); ComplEx is trained on the static graph only (no temporal model).
+- The Datalog engine is deliberately small (no negation or aggregation); ComplEx is trained on the static graph only (no temporal model); the R-GCN is transductive (learned node embeddings) and cannot embed unseen occupations.
 - English / US occupation taxonomy (O\*NET-SOC); data licensed CC BY 4.0 by the U.S. Department of Labor.
 
-## Streamlit app (Streamlit Community Cloud)
-https://career-kg-ftcvszay9xz8lbk7cm7dfv.streamlit.app/
+## Deploying the Streamlit app (Streamlit Community Cloud)
+
+
+Live app: https://career-kg-ftcvszay9xz8lbk7cm7dfv.streamlit.app/
