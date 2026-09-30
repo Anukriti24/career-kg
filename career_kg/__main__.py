@@ -33,6 +33,9 @@ def main():
     kp = sub.add_parser("kge", help="train ComplEx on the full graph; store PREDICTED_REQUIRES in Neo4j")
     kp.add_argument("--epochs", type=int, default=30)
     kp.add_argument("--dim", type=int, default=200)
+    g = sub.add_parser("gnn", help="train a small R-GCN and compare its link prediction with the baselines")
+    g.add_argument("--epochs", type=int, default=40)
+    g.add_argument("--dim", type=int, default=64)
     e = sub.add_parser("eval", help="held-out evaluation vs. exact-match baseline")
     e.add_argument("-n", type=int, default=300)
     e.add_argument("--no-kge", action="store_true", help="skip the (slow) ComplEx training")
@@ -72,6 +75,9 @@ def main():
         predicted = kge.predict_missing(model, tr, ds)
         graph_store.load_kge(graph_store.connect(), predicted)
         print(f"stored {len(predicted)} PREDICTED_REQUIRES edges")
+    elif a.cmd == "gnn":
+        from . import dataset, evaluate, gnn
+        print(evaluate.report_lp(gnn.compare(dataset.parse(), epochs=a.epochs, dim=a.dim)))
     elif a.cmd == "eval":
         from . import dataset, evaluate
         prep = evaluate.prepare(dataset.parse(), n_test=a.n, use_kge=not a.no_kge, kge_epochs=a.epochs)
