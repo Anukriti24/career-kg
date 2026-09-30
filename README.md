@@ -42,6 +42,74 @@ Requirement strength = weight × IDF, so Word/Excel matter little. **Coverage** 
 occupations are **ranked** by Σ strength·credit / √Σ strength, which balances tiny and huge requirement lists.
 Input matching is case-insensitive with aliases ("sql" → *Structured query language SQL*) and suggestions for unknown names.
 
+**Schema of the live graph**
+```cypher
+CALL db.schema.visualization()
+```
+![Graph schema](queries/query%201.png)
+
+```cypher
+MATCH (a)-[r]->(b)
+RETURN DISTINCT labels(a)[0] AS from, type(r) AS relationship, labels(b)[0] AS to
+ORDER BY from, relationship;
+```
+![Relationship patterns](queries/query%202.png)
+
+**1. Resolve the user's input to skill nodes** (`resolve`)
+```cypher
+MATCH (s:Skill) WHERE s.key IN ['python', 'structured query language sql']
+RETURN s.id AS id, s.name AS name, s.type AS type
+```
+![Resolve skills](queries/query%203.png)
+
+**2. Credit for equivalent tools in the same category** (`credits`, 0.2)
+```cypher
+MATCH (u:Skill)-[:IS_A]->(c:Category)<-[:IS_A]-(t:Skill)
+WHERE u.key IN ['tableau'] AND t <> u
+RETURN t.name AS target, u.name AS uname, c.name AS cname
+```
+![Same category](queries/query%204.png)
+
+**3. Credit for learned similar skills** (`credits`, 0.15 x cosine)
+```cypher
+MATCH (u:Skill)-[r:SIMILAR]->(t:Skill)
+WHERE u.key IN ['tensorflow']
+RETURN t.name AS target, u.name AS uname, r.sim AS sim
+```
+![Similar skills](queries/query%205.png)
+
+**4. Ranking** (`recommend`; exact-match credit only, technologies only)
+```cypher
+MATCH (s0:Skill) WHERE s0.key IN ['python', 'structured query language sql', 'tensorflow']
+WITH collect({id: s0.id, credit: 1.0}) AS cr
+UNWIND cr AS c
+MATCH (o:Occupation)-[r:REQUIRES]->(s:Skill {id: c.id})
+WHERE s.type IN ['technology'] AND (o.zone IS NULL OR (o.zone >= 1 AND o.zone <= 5))
+WITH o, sum(r.weight * s.idf * c.credit) AS got, (o.total_technology) AS total
+RETURN o.code AS code, o.title AS title, o.zone AS zone,
+       got / sqrt(total) AS rank, got / total AS coverage
+ORDER BY rank DESC LIMIT 10
+```
+![Ranking query](queries/query%206.png)
+
+With only three skills, exact matching ranks short tool lists first (see Limitations); the category and similarity credits above are what make results more sensible.
+
+**5. Occupation detail** (`occupation`: requirements, career moves, predicted skills, related occupations)
+```cypher
+MATCH (o:Occupation {title:'Data Scientists'})-[r:REQUIRES]->(s:Skill)
+RETURN s.name AS name, s.type AS type, r.weight AS weight ORDER BY r.weight DESC, s.name;
+
+MATCH (:Occupation {title:'Data Scientists'})-[m:CAN_MOVE_TO]->(o:Occupation)
+RETURN o.title AS title, o.zone AS zone, m.hops AS hops ORDER BY m.hops, o.zone DESC, o.title LIMIT 15;
+
+MATCH (:Occupation {title:'Data Scientists'})-[p:PREDICTED_REQUIRES]->(s:Skill)
+RETURN s.name AS skill, round(p.p * 1000) / 1000 AS probability ORDER BY p.p DESC LIMIT 10;
+
+MATCH (:Occupation {title:'Data Scientists'})-[r:RELATED_TO]->(o:Occupation)
+RETURN o.title AS title, r.tier AS tier ORDER BY r.rank LIMIT 10;
+```
+![Occupation detail](queries/query%207.png)
+
 ## Reasoning rules (`career_kg/rules.dl`, `datalog.py`)
 A small semi-naive Datalog engine (recursion, multi-atom heads, existential head variables, arithmetic builtins) runs at ingest:
 - **recursion**: transitive closure of the UNSPSC taxonomy -> `(Skill)-[:IN_CAT]->(ancestor Category)`
