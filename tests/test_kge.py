@@ -30,3 +30,11 @@ def test_save_and_load_roundtrip(ds, tmp_path):
     loaded, blob = kge.load(tmp_path / "m.pt")
     assert blob["entities"] == tr.ents and blob["meta"] == {"x": 1}
     assert np.allclose(kge.score_tails(model, tr, [0]), kge.score_tails(loaded, tr, [0]), atol=1e-5)
+
+
+def test_rgcn_trains_and_scores_all_entities(ds):
+    from career_kg import gnn
+    tr = kge.Triples(ds, holdout_frac=0.05)
+    model = gnn.train(tr, dim=8, epochs=1, log=lambda *_: None)
+    logits = kge.score_tails(model, tr, [0, 1])
+    assert logits.shape == (2, len(tr.ents)) and np.isfinite(logits).all()
