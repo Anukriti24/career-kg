@@ -1,6 +1,6 @@
 # Career KG — knowledge-graph career recommendation from skills
 
-Enter the technologies you know; a Neo4j knowledge graph built from the real **O\*NET 30.0** database
+Enter the technologies you know,  a Neo4j knowledge graph built from the real **O\*NET 30.0** database
 (1,016 occupations, 8,843 skills) ranks matching occupations, explains every match, and suggests what to learn next.
 
 ## Quick start
